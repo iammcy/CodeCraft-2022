@@ -1,0 +1,12 @@
+#IncludeRegexLine: ^[ 	]*#[ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/maicy/jupyter-lab/2022CodeCraft/SDK/SDK_C++/CodeCraft-2022/src/CodeCraft-2022.cpp
+bits/stdc++.h
+-
+

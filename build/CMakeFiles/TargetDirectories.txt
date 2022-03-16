@@ -1,0 +1,3 @@
+/home/maicy/jupyter-lab/2022CodeCraft/SDK/SDK_C++/build/CMakeFiles/edit_cache.dir
+/home/maicy/jupyter-lab/2022CodeCraft/SDK/SDK_C++/build/CMakeFiles/CodeCraft-2022.dir
+/home/maicy/jupyter-lab/2022CodeCraft/SDK/SDK_C++/build/CMakeFiles/rebuild_cache.dir
