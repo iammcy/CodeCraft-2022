@@ -1,7 +1,7 @@
 /**
  * @file CodeCraft-2022.cpp
  * @author iammcy
- * @version 0.1
+ * @version 0.3
  * @date 2022-03-15
  * 
  * @copyright Copyright (c) 2022
@@ -26,14 +26,14 @@ const string OUTPUT_DIR = "/output/";
 #endif
 
 typedef long long ll;
-struct indegree
+struct degree
 {
     int idx = 0;
-    int in_num = 0;
+    int num = 0;
 };
 
-bool cmp(const indegree & in1, const indegree & in2){
-    return in1.in_num < in2.in_num;
+bool cmp(const degree & d1, const degree & d2){
+    return d1.num < d2.num;
 }
 
 class Scheduler
@@ -46,8 +46,9 @@ private:
     vector<ll> site_used;
     vector<ll> site_bw;
     vector<vector<int>> qos;
-    vector<indegree> client_indegree;
-    vector<int> outdegree;
+    vector<degree> client_indegree;
+    vector<degree> sites_outdegree;
+    vector<vector<float>> weight;
     vector<vector<ll>> ans;
     
 public:
@@ -56,6 +57,7 @@ public:
     void input();
     void output(int time);
     void scheduling();
+    void adjust_weight();
 };
 
 Scheduler::Scheduler(/* args */)
@@ -110,7 +112,7 @@ void Scheduler::input()
 
     inFile1.close();    
 
-    // 3.读取site_bandwidth.csv
+    // 4.读取site_bandwidth.csv
     ifstream inFile4(DATA_DIR + "site_bandwidth.csv", ios::in);
     if (!inFile4){
         cout<<"failed to open file"<<endl;
@@ -128,7 +130,7 @@ void Scheduler::input()
     }
     inFile4.close();
 
-    // 2.先读取config.ini，再读取qos.csv
+    // 2.读取config.ini
     ifstream inFile2(DATA_DIR + "config.ini", ios::in);
     if (!inFile2){
         cout<<"failed to open file"<<endl;
@@ -142,11 +144,15 @@ void Scheduler::input()
     qos_constraint = atoi(field.c_str());
     inFile2.close();
 
-    client_indegree = vector<indegree>(M);
+    // 3.读取qos.csv
+    client_indegree = vector<degree>(M);
     for (int i=0; i<M; i++){
         client_indegree[i].idx = i;
     }
-    outdegree = vector<int>(N, 0);
+    sites_outdegree = vector<degree>(N);
+    for (int i=0; i<N; i++){
+        sites_outdegree[i].idx = i;
+    }
     ifstream inFile3(DATA_DIR + "qos.csv", ios::in);
     if (!inFile3){
         cout<<"failed to open file"<<endl;
@@ -165,8 +171,8 @@ void Scheduler::input()
             int x = atoi(field.c_str());
             if (x < qos_constraint){
                 tmp[i] = 1;
-                client_indegree[i].in_num++;
-                outdegree[j]++;
+                client_indegree[i].num++;
+                sites_outdegree[j].num++;
             }
             i++;
         }
@@ -174,12 +180,41 @@ void Scheduler::input()
         j++;
     }
     inFile3.close();
+
+}
+
+void Scheduler::adjust_weight()
+{
+    // 预处理客户节点的分配权重
+    weight = vector<vector<float>>(N, vector<float>(M, 0));
+    vector<float> sum(M, 0);
+    for (int i=0; i<N; i++){
+        float avg_bw = (float)(site_bw[i] - site_used[i]) / (float)sites_outdegree[i].num;
+        for (int j=0; j<M; j++){
+            if (qos[i][j] == 1)
+            {
+                weight[i][j] = avg_bw;
+                sum[j] += avg_bw;
+            }
+        }
+    }
+    for (int i=0; i<N; i++){
+        for (int j=0; j<M; j++){
+            if (qos[i][j] == 1)
+            {
+                weight[i][j] = weight[i][j] / sum[j];
+            }
+        }
+    }
 }
 
 void Scheduler::scheduling()
 {
     // 预处理客户节点优先级
     sort(client_indegree.begin(), client_indegree.end(), cmp);
+
+    // 预处理边缘节点优先级
+    // sort(sites_outdegree.begin(), sites_outdegree.end(), cmp);
 
     // 遍历所有时刻生成方案
     for (int i = 0; i < T; i++)
@@ -191,29 +226,38 @@ void Scheduler::scheduling()
         for (int j = 0; j < M; j++)
         {
             int client_idx = client_indegree[j].idx;
-            if (demands[i][client_idx])
+
+            // 对该客户节点分配流量
+            while (demands[i][client_idx])
             {
+                this->adjust_weight();
+                ll rest_demands = demands[i][client_idx];
+
+                // 遍历所有边缘节点
                 for (int k = 0; k < N; k++)
-                {
+                {                    
+                    // 进入可分配边缘节点
                     if (qos[k][client_idx] == 1 && (site_bw[k] - site_used[k] > 0))
                     {
                         ll res = site_bw[k] - site_used[k];
-                        if (res < demands[i][client_idx])
+                        ll weight_demands = (ll)((float)rest_demands * weight[k][client_idx] + 1);
+                        if (weight_demands > demands[i][client_idx])
+                            weight_demands = demands[i][client_idx];
+                        
+                        if (res < weight_demands)
                         {
                             site_used[k] =  site_bw[k];
-                            ans[k][client_idx] = res;
+                            ans[k][client_idx] += res;
                             demands[i][client_idx] -= res;
                         }
                         else{
-                            site_used[k] += demands[i][client_idx];
-                            ans[k][client_idx] = demands[i][client_idx];
-                            demands[i][client_idx] = 0;
+                            site_used[k] += weight_demands;
+                            ans[k][client_idx] += weight_demands;
+                            demands[i][client_idx] -= weight_demands;
                         }
                     }
-                    if (demands[i][client_idx] == 0)
-                        break;
+
                 }
-                
             }
             
         }
