@@ -31,9 +31,18 @@ struct degree
     int idx = 0;
     int num = 0;
 };
+struct used
+{
+    int idx = 0;
+    ll u = 0;
+};
 
-bool cmp(const degree & d1, const degree & d2){
+
+bool cmp1(const degree & d1, const degree & d2){
     return d1.num < d2.num;
+}
+bool cmp2(const used & u1, const used & u2){
+    return u1.u < u2.u;
 }
 
 class Scheduler
@@ -49,6 +58,7 @@ private:
     vector<degree> client_indegree;
     vector<degree> sites_outdegree;
     vector<vector<float>> weight;
+    vector<used> acc_site_used;
     vector<vector<ll>> ans;
     
 public:
@@ -211,10 +221,15 @@ void Scheduler::adjust_weight()
 void Scheduler::scheduling()
 {
     // 预处理客户节点优先级
-    sort(client_indegree.begin(), client_indegree.end(), cmp);
+    // sort(client_indegree.begin(), client_indegree.end(), cmp1);
 
     // 预处理边缘节点优先级
-    // sort(sites_outdegree.begin(), sites_outdegree.end(), cmp);
+    // sort(sites_outdegree.begin(), sites_outdegree.end(), cmp1);
+    acc_site_used = vector<used>(N);
+    for (int i = 0; i < N; i++)
+        acc_site_used[i].idx = i;
+
+    int site_used_num = 0, tag = 0;
 
     // 遍历所有时刻生成方案
     for (int i = 0; i < T; i++)
@@ -223,44 +238,87 @@ void Scheduler::scheduling()
         ans = vector<vector<ll>>(N, vector<ll>(M, 0));
         site_used = vector<ll>(N, 0);
 
+        // 更新边缘节点分配顺序
+        int tmp = 0;
+        for (int j = 0; j < N; j++){
+            if (acc_site_used[j].u > 0)
+                tmp++;
+        }
+        if (i / (int)((float)T * 0.05 ) > tag && tmp > site_used_num){
+            sort(acc_site_used.begin(), acc_site_used.end(), cmp2);
+            tag = i / (int)((float)T * 0.05 );
+            site_used_num = tmp;
+        }
+
+        // 存储已访问的边缘节点
+        set<int> visited;
+
         for (int j = 0; j < M; j++)
         {
             int client_idx = client_indegree[j].idx;
 
             // 对该客户节点分配流量
-            while (demands[i][client_idx])
-            {
-                this->adjust_weight();
-                ll rest_demands = demands[i][client_idx];
 
-                // 遍历所有边缘节点
-                for (int k = 0; k < N; k++)
-                {                    
-                    // 进入可分配边缘节点
-                    if (qos[k][client_idx] == 1 && (site_bw[k] - site_used[k] > 0))
+            // 优先分配已访问的边缘节点
+            for (auto idx : visited)
+            {
+                int sidx = acc_site_used[idx].idx;
+                // 进入可分配边缘节点
+                if (qos[sidx][client_idx] == 1 && (site_bw[sidx] - site_used[sidx] > 0))
+                {
+                    ll res = site_bw[sidx] - site_used[sidx];
+                    
+                    if (res < demands[i][client_idx])
                     {
-                        ll res = site_bw[k] - site_used[k];
-                        ll weight_demands = (ll)((float)rest_demands * weight[k][client_idx] + 1);
-                        if (weight_demands > demands[i][client_idx])
-                            weight_demands = demands[i][client_idx];
-                        
-                        if (res < weight_demands)
-                        {
-                            site_used[k] =  site_bw[k];
-                            ans[k][client_idx] += res;
-                            demands[i][client_idx] -= res;
-                        }
-                        else{
-                            site_used[k] += weight_demands;
-                            ans[k][client_idx] += weight_demands;
-                            demands[i][client_idx] -= weight_demands;
-                        }
+                        site_used[sidx] = site_bw[sidx];
+                        ans[sidx][client_idx] = res;
+                        demands[i][client_idx] -= res;
+                    }
+                    else{
+                        site_used[sidx] += demands[i][client_idx];
+                        ans[sidx][client_idx] = demands[i][client_idx];
+                        demands[i][client_idx] = 0;
+                        break;
+                    }
+                }
+                acc_site_used[idx].u += ans[sidx][client_idx];
+            }
+
+            // 遍历所有边缘节点
+            for (int k = 0; k < N && demands[i][client_idx] > 0; k++)
+            {   
+                int sidx = acc_site_used[k].idx;
+                // 进入可分配边缘节点
+                if (qos[sidx][client_idx] == 1 && (site_bw[sidx] - site_used[sidx] > 0))
+                {
+                    ll res = site_bw[sidx] - site_used[sidx];
+                    
+                    if (res < demands[i][client_idx])
+                    {
+                        site_used[sidx] = site_bw[sidx];
+                        ans[sidx][client_idx] = res;
+                        demands[i][client_idx] -= res;
+                    }
+                    else{
+                        site_used[sidx] += demands[i][client_idx];
+                        ans[sidx][client_idx] = demands[i][client_idx];
+                        demands[i][client_idx] = 0;
                     }
 
+                    visited.insert(k);
                 }
+                acc_site_used[k].u += ans[sidx][client_idx];
             }
             
         }
+
+#if Debug
+        // 输出边缘节点流量使用情况
+        cout<<"Time "<<i<<": ";
+        for (int j=0; j<N; j++)
+            cout<<site_used[j]<<" ";
+        cout<<endl;
+#endif
 
         // 检查客户节点是否分配完
         for (int j = 0; j < M; j++)
