@@ -1,7 +1,7 @@
 /**
  * @file CodeCraft-2022.cpp
  * @author iammcy
- * @version 0.3
+ * @version 0.4
  * @date 2022-03-15
  * 
  * @copyright Copyright (c) 2022
@@ -52,6 +52,7 @@ private:
     int T = 0, M = 0, N = 0, qos_constraint;
     vector<string> clients, sites;
     vector<vector<ll>> demands;
+    vector<used> row_total_demands;
     vector<ll> site_used;
     vector<ll> site_bw;
     vector<vector<int>> qos;
@@ -60,6 +61,7 @@ private:
     vector<vector<float>> weight;
     vector<used> acc_site_used;
     vector<vector<ll>> ans;
+    vector<string> res_list;
     
 public:
     Scheduler(/* args */);
@@ -67,6 +69,7 @@ public:
     void input();
     void output(int time);
     void scheduling();
+    void output_all();
     void adjust_weight();
 };
 
@@ -119,6 +122,15 @@ void Scheduler::input()
         demands.push_back(tmp);
         T++;
     }
+    res_list = vector<string>(T);
+    row_total_demands = vector<used>(T);
+    for (int i = 0; i < T; i++){
+        row_total_demands[i].idx = i;
+        for (int j = 0; j < M; j++){
+            row_total_demands[i].u -= demands[i][j];
+        }
+    }
+    stable_sort(row_total_demands.begin(), row_total_demands.end(), cmp2);
 
     inFile1.close();    
 
@@ -191,6 +203,20 @@ void Scheduler::input()
     }
     inFile3.close();
 
+#if Debug
+    cout<<"client degree: ";
+    for (int i = 0; i < M; i++){
+        cout<<client_indegree[i].num<<" ";
+    }
+    cout<<endl;
+
+    cout<<"site degree: ";
+    for (int i = 0; i < N; i++){
+        cout<<sites_outdegree[i].num<<" ";
+    }
+    cout<<endl;
+#endif
+
 }
 
 void Scheduler::adjust_weight()
@@ -234,6 +260,9 @@ void Scheduler::scheduling()
     // 遍历所有时刻生成方案
     for (int i = 0; i < T; i++)
     {
+        // 优先处理需求量大的时刻
+        int time = row_total_demands[i].idx;
+
         // 初始化每个时刻的分配方案
         ans = vector<vector<ll>>(N, vector<ll>(M, 0));
         site_used = vector<ll>(N, 0);
@@ -268,16 +297,16 @@ void Scheduler::scheduling()
                 {
                     ll res = site_bw[sidx] - site_used[sidx];
                     
-                    if (res < demands[i][client_idx])
+                    if (res < demands[time][client_idx])
                     {
                         site_used[sidx] = site_bw[sidx];
                         ans[sidx][client_idx] = res;
-                        demands[i][client_idx] -= res;
+                        demands[time][client_idx] -= res;
                     }
                     else{
-                        site_used[sidx] += demands[i][client_idx];
-                        ans[sidx][client_idx] = demands[i][client_idx];
-                        demands[i][client_idx] = 0;
+                        site_used[sidx] += demands[time][client_idx];
+                        ans[sidx][client_idx] = demands[time][client_idx];
+                        demands[time][client_idx] = 0;
                         break;
                     }
                 }
@@ -285,7 +314,7 @@ void Scheduler::scheduling()
             }
 
             // 遍历所有边缘节点
-            for (int k = 0; k < N && demands[i][client_idx] > 0; k++)
+            for (int k = 0; k < N && demands[time][client_idx] > 0; k++)
             {   
                 int sidx = acc_site_used[k].idx;
                 // 进入可分配边缘节点
@@ -293,16 +322,16 @@ void Scheduler::scheduling()
                 {
                     ll res = site_bw[sidx] - site_used[sidx];
                     
-                    if (res < demands[i][client_idx])
+                    if (res < demands[time][client_idx])
                     {
                         site_used[sidx] = site_bw[sidx];
                         ans[sidx][client_idx] = res;
-                        demands[i][client_idx] -= res;
+                        demands[time][client_idx] -= res;
                     }
                     else{
-                        site_used[sidx] += demands[i][client_idx];
-                        ans[sidx][client_idx] = demands[i][client_idx];
-                        demands[i][client_idx] = 0;
+                        site_used[sidx] += demands[time][client_idx];
+                        ans[sidx][client_idx] = demands[time][client_idx];
+                        demands[time][client_idx] = 0;
                     }
 
                     visited.insert(k);
@@ -314,7 +343,7 @@ void Scheduler::scheduling()
 
 #if Debug
         // 输出边缘节点流量使用情况
-        cout<<"Time "<<i<<": ";
+        cout<<"Time "<<time<<": ";
         for (int j=0; j<N; j++)
             cout<<site_used[j]<<" ";
         cout<<endl;
@@ -323,26 +352,21 @@ void Scheduler::scheduling()
         // 检查客户节点是否分配完
         for (int j = 0; j < M; j++)
         {
-            if (demands[i][j])
+            if (demands[time][j])
             {
                 cout<<"分配不合理"<<endl;
                 exit(1);
             }
         }
         
-        this->output(i);
+        this->output(time);
     }
-    
+    this->output_all();
 }
 
 void Scheduler::output(int time)
 {
     string res = "";
-    ofstream outFile(OUTPUT_DIR + "solution.txt", ios::app);
-    if (!outFile){
-        cout<<"failed to open file"<<endl;
-        exit(1);
-    }
     for (int j=0; j<M; j++){
         res += clients[j] + ":";
         bool tag = false;
@@ -359,7 +383,18 @@ void Scheduler::output(int time)
             res += "\n";
         }
     }
-    outFile<<res;
+    res_list[time] = res;
+}
+
+void Scheduler::output_all()
+{
+    ofstream outFile(OUTPUT_DIR + "solution.txt", ios::app);
+    if (!outFile){
+        cout<<"failed to open file"<<endl;
+        exit(1);
+    }
+    for (int i=0; i<T; i++)
+        outFile<<res_list[i];
     outFile.close();
 }
 
