@@ -55,11 +55,13 @@ private:
     vector<used> row_total_demands;
     vector<ll> site_used;
     vector<ll> site_bw;
+    vector<priority_queue<ll>> site_cost;
     vector<vector<int>> qos;
     vector<degree> client_indegree;
     vector<degree> sites_outdegree;
     vector<vector<float>> weight;
     vector<used> acc_site_used;
+    vector<int> acc_site_visited;
     vector<vector<ll>> ans;
     vector<string> res_list;
     
@@ -251,6 +253,8 @@ void Scheduler::scheduling()
 
     // 预处理边缘节点优先级
     // sort(sites_outdegree.begin(), sites_outdegree.end(), cmp1);
+    site_cost = vector<priority_queue<ll>>(N);
+    acc_site_visited = vector<int>(N, 0);
     acc_site_used = vector<used>(N);
     for (int i = 0; i < N; i++)
         acc_site_used[i].idx = i;
@@ -292,6 +296,11 @@ void Scheduler::scheduling()
             for (auto idx : visited)
             {
                 int sidx = acc_site_used[idx].idx;
+
+                // 若边缘节点处在收费阶段，跳过优先分配策略
+                if(acc_site_visited[sidx] >= (int)((float)T * 0.05 ))
+                    continue;
+
                 // 进入可分配边缘节点
                 if (qos[sidx][client_idx] == 1 && (site_bw[sidx] - site_used[sidx] > 0))
                 {
@@ -300,18 +309,42 @@ void Scheduler::scheduling()
                     if (res < demands[time][client_idx])
                     {
                         site_used[sidx] = site_bw[sidx];
-                        ans[sidx][client_idx] = res;
+                        ans[sidx][client_idx] += res;
                         demands[time][client_idx] -= res;
                     }
                     else{
                         site_used[sidx] += demands[time][client_idx];
-                        ans[sidx][client_idx] = demands[time][client_idx];
+                        ans[sidx][client_idx] += demands[time][client_idx];
                         demands[time][client_idx] = 0;
                         break;
                     }
                 }
-                acc_site_used[idx].u += ans[sidx][client_idx];
             }
+
+            // 以低于当前边缘节点成本的流量分配一遍
+            for (int k = 0; k < N && demands[time][client_idx] > 0; k++)
+            {
+                int sidx = acc_site_used[k].idx;
+                // 进入可分配边缘节点
+                if (qos[sidx][client_idx] == 1 && (site_bw[sidx] - site_used[sidx] > 0) && (acc_site_visited[sidx] > (int)((float)T * 0.05 )) && (!site_cost.empty()) && (-site_cost[sidx].top() > site_used[sidx]))
+                {
+                    ll res = -site_cost[sidx].top() - site_used[sidx];
+                    
+                    if (res < demands[time][client_idx])
+                    {
+                        site_used[sidx] = -site_cost[sidx].top();
+                        ans[sidx][client_idx] += res;
+                        demands[time][client_idx] -= res;
+                    }
+                    else{
+                        site_used[sidx] += demands[time][client_idx];
+                        ans[sidx][client_idx] += demands[time][client_idx];
+                        demands[time][client_idx] = 0;
+                        break;
+                    }
+                }
+            }
+            
 
             // 遍历所有边缘节点
             for (int k = 0; k < N && demands[time][client_idx] > 0; k++)
@@ -325,26 +358,40 @@ void Scheduler::scheduling()
                     if (res < demands[time][client_idx])
                     {
                         site_used[sidx] = site_bw[sidx];
-                        ans[sidx][client_idx] = res;
+                        ans[sidx][client_idx] += res;
                         demands[time][client_idx] -= res;
                     }
                     else{
                         site_used[sidx] += demands[time][client_idx];
-                        ans[sidx][client_idx] = demands[time][client_idx];
+                        ans[sidx][client_idx] += demands[time][client_idx];
                         demands[time][client_idx] = 0;
                     }
-
                     visited.insert(k);
                 }
-                acc_site_used[k].u += ans[sidx][client_idx];
             }
             
+        }
+
+        for (int j = 0; j < N; j++)
+        {
+            acc_site_used[j].u += site_used[acc_site_used[j].idx];
+        }
+        
+
+        for (int j = 0; j < N; j++){
+            if (site_used[j] > 0){
+                acc_site_visited[j]++;
+                site_cost[j].push(-site_used[j]);
+                if ((acc_site_visited[j] > (int)((float)T * 0.05 + 1))){
+                    site_cost[j].pop();
+                }
+            }
         }
 
 #if Debug
         // 输出边缘节点流量使用情况
         cout<<"Time "<<time<<": ";
-        for (int j=0; j<N; j++)
+        for (int j = 0; j < N; j++)
             cout<<site_used[j]<<" ";
         cout<<endl;
 #endif
@@ -362,6 +409,33 @@ void Scheduler::scheduling()
         this->output(time);
     }
     this->output_all();
+
+#if Debug
+    // 输出边缘节点有多少时刻被分配
+    cout<<"site visited time: ";
+    for (int i = 0; i < N; i++)
+    {
+        cout<<acc_site_visited[i]<<" ";
+    }
+    cout<<endl;
+
+    // 输出边缘节点的近似成本以及总和
+    ll cost = 0;
+    cout<<"site cost: ";
+    for (int i = 0; i < N; i++)
+    {
+        if (acc_site_visited[i] > (int)((float)T * 0.05)){
+            cout<<-site_cost[i].top()<<" ";
+            cost += -site_cost[i].top();
+        }
+        else{
+            cout<<0<<" ";
+        }
+    }
+    cout<<endl;
+    cout<<"total cost: "<<cost<<endl;
+     
+#endif
 }
 
 void Scheduler::output(int time)
