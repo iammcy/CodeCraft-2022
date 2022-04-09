@@ -10,10 +10,12 @@
 
 ## Run
 ```sh
+cd ./SDK_C++/
 bash build_and_run.sh
 ```
 
 ## Compress
 ```sh
+cd ./SDK_C++/
 bash CodeCraft_zip.sh
 ```
